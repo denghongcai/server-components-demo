@@ -61,5 +61,6 @@
     "ignore": [
       "build/*"
     ]
-  }
+  },
+  "repository": "https://github.com/reactjs/server-components-demo.git"
 }

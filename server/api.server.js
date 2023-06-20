@@ -24,12 +24,15 @@ const {readFileSync} = require('fs');
 const {unlink, writeFile} = require('fs').promises;
 const {renderToPipeableStream} = require('react-server-dom-webpack/server');
 const path = require('path');
-const {Pool} = require('pg');
 const React = require('react');
 const ReactApp = require('../src/App').default;
-
-// Don't keep credentials in the source tree in a real app!
-const pool = new Pool(require('../credentials'));
+const {
+  db,
+  findNote,
+  insertNote,
+  editNote,
+  deleteNote,
+} = require('../src/db.server');
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -122,12 +125,8 @@ const NOTES_PATH = path.resolve(__dirname, '../notes');
 app.post(
   '/notes',
   handleErrors(async function(req, res) {
-    const now = new Date();
-    const result = await pool.query(
-      'insert into notes (title, body, created_at, updated_at) values ($1, $2, $3, $3) returning id',
-      [req.body.title, req.body.body, now]
-    );
-    const insertedId = result.rows[0].id;
+    const note = await insertNote(req.body.title, req.body.body);
+    const insertedId = note.id;
     await writeFile(
       path.resolve(NOTES_PATH, `${insertedId}.md`),
       req.body.body,
@@ -140,12 +139,9 @@ app.post(
 app.put(
   '/notes/:id',
   handleErrors(async function(req, res) {
-    const now = new Date();
     const updatedId = Number(req.params.id);
-    await pool.query(
-      'update notes set title = $1, body = $2, updated_at = $3 where id = $4',
-      [req.body.title, req.body.body, now, updatedId]
-    );
+    await editNote(updatedId, req.body.title, req.body.body);
+
     await writeFile(
       path.resolve(NOTES_PATH, `${updatedId}.md`),
       req.body.body,
@@ -158,7 +154,7 @@ app.put(
 app.delete(
   '/notes/:id',
   handleErrors(async function(req, res) {
-    await pool.query('delete from notes where id = $1', [req.params.id]);
+    await deleteNote(req.params.id);
     await unlink(path.resolve(NOTES_PATH, `${req.params.id}.md`));
     sendResponse(req, res, null);
   })
@@ -167,18 +163,15 @@ app.delete(
 app.get(
   '/notes',
   handleErrors(async function(_req, res) {
-    const {rows} = await pool.query('select * from notes order by id desc');
-    res.json(rows);
+    res.json(await Promise.resolve(db));
   })
 );
 
 app.get(
   '/notes/:id',
   handleErrors(async function(req, res) {
-    const {rows} = await pool.query('select * from notes where id = $1', [
-      req.params.id,
-    ]);
-    res.json(rows[0]);
+    const note = await findNote(req.params.id);
+    res.json(note);
   })
 );
 
